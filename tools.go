@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -38,10 +40,11 @@ func SearchMediaID(cfg Config) server.ServerTool {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
+		term := strings.ReplaceAll(mediaName, " ", "+")
 		var result string
 		switch mediaType {
 		case "series":
-			url := fmt.Sprintf("%s/api/v3/series/lookup?apikey=%s&term=%s", cfg.RadarrApiKey, cfg.SonarrApiKey, mediaName)
+			url := fmt.Sprintf("%s/api/v3/series/lookup?apikey=%s&term=%s", cfg.SonarrUrl, cfg.SonarrApiKey, term)
 			resp, err := http.Get(url)
 			if err != nil {
 				return mcp.NewToolResultError("Failed to fetch data from Sonarr: " + err.Error()), nil
@@ -53,7 +56,7 @@ func SearchMediaID(cfg Config) server.ServerTool {
 			}
 
 			var series []struct {
-				ID    int    `json:"id"`
+				ID    int    `json:"tvdbId"`
 				Title string `json:"title"`
 			}
 			if err := json.NewDecoder(resp.Body).Decode(&series); err != nil {
@@ -66,7 +69,7 @@ func SearchMediaID(cfg Config) server.ServerTool {
 				result = "No matching series found in Sonarr."
 			}
 		case "movie":
-			url := fmt.Sprintf("%s/api/v3/movie/lookup?apikey=%s&term=%s", cfg.RadarrUrl, cfg.RadarrApiKey, mediaName)
+			url := fmt.Sprintf("%s/api/v3/movie/lookup?apikey=%s&term=%s", cfg.RadarrUrl, cfg.RadarrApiKey, term)
 			resp, err := http.Get(url)
 			if err != nil {
 				return mcp.NewToolResultError("Failed to fetch data from Radarr: " + err.Error()), nil
@@ -78,7 +81,7 @@ func SearchMediaID(cfg Config) server.ServerTool {
 			}
 
 			var movies []struct {
-				ID    int    `json:"id"`
+				ID    int    `json:"tmdbId"`
 				Title string `json:"title"`
 			}
 			if err := json.NewDecoder(resp.Body).Decode(&movies); err != nil {
@@ -113,6 +116,11 @@ func RequestDownload(cfg Config) server.ServerTool {
 			mcp.Description("The type of media to download"),
 			mcp.Enum("movie", "series"),
 		),
+		mcp.WithString(
+			"name",
+			mcp.Required(),
+			mcp.Description("The name of media to download"),
+		),
 		mcp.WithNumber(
 			"id",
 			mcp.Required(),
@@ -126,6 +134,11 @@ func RequestDownload(cfg Config) server.ServerTool {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
+		mediaName, err := request.RequireString("name")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
 		mediaID, err := request.RequireInt("id")
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -134,8 +147,18 @@ func RequestDownload(cfg Config) server.ServerTool {
 		var result string
 		switch mediaType {
 		case "series":
-			url := fmt.Sprintf("%s/api/v3/series/%d/command?apikey=%s", cfg.SonarrUrl, mediaID, cfg.SonarrApiKey)
-			resp, err := http.Post(url, "application/json", nil)
+			url := fmt.Sprintf("%s/api/v3/series?apikey=%s", cfg.SonarrUrl, cfg.SonarrApiKey)
+			data := map[string]any{
+				"title":            mediaName,
+				"tvdbId":           mediaID,
+				"qualityProfileId": 6,                      // TODO: not hard coded
+				"rootFolderPath":   "/media/library/shows", // TODO: not hard coded
+			}
+			body, err := json.Marshal(data)
+			if err != nil {
+				return mcp.NewToolResultError("Failed to marhsal series ID for Radarr: " + err.Error()), nil
+			}
+			resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
 			if err != nil {
 				return mcp.NewToolResultError("Failed to request download from Sonarr: " + err.Error()), nil
 			}
@@ -147,8 +170,18 @@ func RequestDownload(cfg Config) server.ServerTool {
 
 			result = fmt.Sprintf("Download requested for Sonarr series with ID: %d", mediaID)
 		case "movie":
-			url := fmt.Sprintf("%s/api/v3/movie/%d/command?apikey=%s", cfg.RadarrUrl, mediaID, cfg.RadarrApiKey)
-			resp, err := http.Post(url, "application/json", nil)
+			url := fmt.Sprintf("%s/api/v3/movie?apikey=%s", cfg.RadarrUrl, cfg.RadarrApiKey)
+			data := map[string]any{
+				"title":            mediaName,
+				"tmdbId":           mediaID,
+				"qualityProfileId": 6,                       // TODO: not hard coded
+				"rootFolderPath":   "/media/library/movies", // TODO: not hard coded
+			}
+			body, err := json.Marshal(data)
+			if err != nil {
+				return mcp.NewToolResultError("Failed to marhsal movie ID for Radarr: " + err.Error()), nil
+			}
+			resp, err := http.Post(url, "application/json", bytes.NewBuffer(body))
 			if err != nil {
 				return mcp.NewToolResultError("Failed to request download from Radarr: " + err.Error()), nil
 			}
