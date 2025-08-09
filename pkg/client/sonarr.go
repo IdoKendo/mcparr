@@ -97,3 +97,15 @@ func (s *SonarrClient) SearchSeriesByGenre(ctx context.Context, genre string, si
 
 	return matchingSeries, nil
 }
+
+func (s *SonarrClient) RequestSeriesDelete(ctx context.Context, series Series) error {
+	data := map[string]any{
+		"title":  series.Title,
+		"tvdbId": series.ID,
+	}
+	_, err := s.client.Delete(ctx, fmt.Sprintf("series/%d", series.ID), data)
+	if err != nil {
+		return fmt.Errorf("failed to request series delete: %w", err)
+	}
+	return nil
+}

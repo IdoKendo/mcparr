@@ -76,6 +76,10 @@ func (m *mockSonarrClient) RequestSeriesDownload(ctx context.Context, series Ser
 	return nil
 }
 
+func (m *mockSonarrClient) RequestSeriesDelete(ctx context.Context, series Series) error {
+	return nil
+}
+
 func (m *mockSonarrClient) SearchSeriesByGenre(ctx context.Context, genre string, similarTo string, limit int) ([]Series, error) {
 	return []Series{}, nil
 }

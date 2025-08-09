@@ -68,6 +68,15 @@ func (a *SonarrClientAdapter) SearchSeriesByGenre(ctx context.Context, genre str
 	return series, nil
 }
 
+// RequestSeriesDelete adapts the client.SonarrClient.RequestSeriesDelete method.
+func (a *SonarrClientAdapter) RequestSeriesDelete(ctx context.Context, series Series) error {
+	clientSeries := client.Series{
+		ID:    series.ID,
+		Title: series.Title,
+	}
+	return a.client.RequestSeriesDelete(ctx, clientSeries)
+}
+
 // RadarrClientAdapter adapts the client.RadarrClient to tools.RadarrClient.
 type RadarrClientAdapter struct {
 	client *client.RadarrClient
@@ -128,4 +137,11 @@ func (a *RadarrClientAdapter) SearchMoviesByGenre(ctx context.Context, genre str
 	}
 
 	return movies, nil
+}
+func (a *RadarrClientAdapter) RequestMovieDelete(ctx context.Context, movie Movie) error {
+	clientMovie := client.Movie{
+		ID:    movie.ID,
+		Title: movie.Title,
+	}
+	return a.client.RequestMovieDelete(ctx, clientMovie)
 }

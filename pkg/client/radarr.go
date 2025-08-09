@@ -97,3 +97,17 @@ func (r *RadarrClient) SearchMoviesByGenre(ctx context.Context, genre string, si
 
 	return matchingMovies, nil
 }
+
+// RequestMovieDelete requests a movie to be deleted.
+func (r *RadarrClient) RequestMovieDelete(ctx context.Context, movie Movie) error {
+	data := map[string]any{
+		"title":  movie.Title,
+		"tmdbId": movie.ID,
+	}
+	_, err := r.client.Delete(ctx, fmt.Sprintf("movie/%d", movie.ID), data)
+	if err != nil {
+		return fmt.Errorf("failed to request movie delete: %w", err)
+	}
+
+	return nil
+}
