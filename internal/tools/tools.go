@@ -34,6 +34,7 @@ type SonarrClient interface {
 	LookupSeries(ctx context.Context, name string) ([]Series, error)
 	RequestSeriesDownload(ctx context.Context, series Series, qualityProfileID int, rootFolderPath string) error
 	SearchSeriesByGenre(ctx context.Context, genre string, similarTo string, limit int) ([]Series, error)
+	RequestSeriesDelete(ctx context.Context, series Series) error
 }
 
 // RadarrClient is a simplified interface for the Radarr client.
@@ -41,6 +42,7 @@ type RadarrClient interface {
 	LookupMovie(ctx context.Context, name string) ([]Movie, error)
 	RequestMovieDownload(ctx context.Context, movie Movie, qualityProfileID int, rootFolderPath string) error
 	SearchMoviesByGenre(ctx context.Context, genre string, similarTo string, limit int) ([]Movie, error)
+	RequestMovieDelete(ctx context.Context, movie Movie) error
 }
 
 // Series represents a TV series.
@@ -246,6 +248,83 @@ func (m *MediaTools) SearchByGenre() server.ServerTool {
 				result = fmt.Sprintf("No movies found matching genre '%s'. Try a different genre such as 'drama', 'comedy', 'action', or 'thriller'.", genre)
 			}
 
+		default:
+			m.logger.Printf("Unsupported media type: %s", mediaType)
+			result = fmt.Sprintf("Unsupported media type: %s. Must be 'movie' or 'series'.", mediaType)
+		}
+
+		return mcp.NewToolResultText(result), nil
+	}
+
+	return server.ServerTool{
+		Tool:    tool,
+		Handler: handler,
+	}
+}
+
+// RequestDelete returns a tool for requesting media deletes.
+func (m *MediaTools) RequestDelete() server.ServerTool {
+	tool := mcp.NewTool(
+		"request_delete",
+		mcp.WithDescription("Request a delete for a movie or TV show"),
+		mcp.WithString(
+			"type",
+			mcp.Required(),
+			mcp.Description("The type of media to delete"),
+			mcp.Enum("movie", "series"),
+		),
+		mcp.WithString(
+			"name",
+			mcp.Required(),
+			mcp.Description("The name of media to delete"),
+		),
+		mcp.WithNumber(
+			"id",
+			mcp.Required(),
+			mcp.Description("The ID of media to delete"),
+		),
+	)
+
+	handler := func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		mediaType, err := request.RequireString("type")
+		if err != nil {
+			m.logger.Printf("Error getting media type: %v", err)
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid media type: %v", err)), nil
+		}
+		mediaId, err := request.RequireInt("id")
+		if err != nil {
+			m.logger.Printf("Error getting media ID: %v", err)
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid media ID: %v", err)), nil
+		}
+		title, err := request.RequireString("name")
+		if err != nil {
+			m.logger.Printf("Error getting media title: %v", err)
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid media title: %v", err)), nil
+		}
+		var result string
+		switch mediaType {
+		case "movie":
+			movie := Movie{
+				ID:    mediaId,
+				Title: title,
+			}
+			if err := m.radarrClient.RequestMovieDelete(ctx, movie); err != nil {
+				m.logger.Printf("Error requesting movie delete: %v", err)
+				return mcp.NewToolResultError(fmt.Sprintf("Failed to request movie delete: %v", err)), nil
+			}
+			m.logger.Printf("Requested movie delete for ID: %d", mediaId)
+			result = fmt.Sprintf("Requested movie delete for ID: %d", mediaId)
+		case "series":
+			series := Series{
+				ID:    mediaId,
+				Title: title,
+			}
+			if err := m.sonarrClient.RequestSeriesDelete(ctx, series); err != nil {
+				m.logger.Printf("Error requesting series delete: %v", err)
+				return mcp.NewToolResultError(fmt.Sprintf("Failed to request series delete: %v", err)), nil
+			}
+			m.logger.Printf("Requested series delete for ID: %d", mediaId)
+			result = fmt.Sprintf("Requested series delete for ID: %d", mediaId)
 		default:
 			m.logger.Printf("Unsupported media type: %s", mediaType)
 			result = fmt.Sprintf("Unsupported media type: %s. Must be 'movie' or 'series'.", mediaType)
